@@ -1,0 +1,20 @@
+#+title: Generaldomo
+
+This package holds the [[http://zguide.zeromq.org/py:all#Asynchronous-Majordomo-Pattern][Majordomo]] examples from the ZeroMQ Zguide which
+have been generalized to so the broker uses either the original ROUTER
+or a SERVER socket.  It also collects the code into a Python package
+and provides a unified command line interface.
+
+The Majordomo examples are copied to [[file:md/][md/]] for reference.
+
+* Install
+
+#+begin_example
+  $ python3 -m venv /path/to/venv
+  $ source /path/to/venv/bin/activate
+  $ pip install --pre pyzmq \
+      --install-option=--enable-drafts \
+      --install-option=--zmq=/path/to/zmq
+  $ pip install -r requirements.txt
+  $ pip install [-e] .
+#+end_example
