@@ -18,3 +18,45 @@ The Majordomo examples are copied to [[file:md/][md/]] for reference.
   $ pip install -r requirements.txt
   $ pip install [-e] .
 #+end_example
+
+* Use
+
+All example programs are exposed through a common ~generaldomo~ CLI.
+
+  #+begin_export 
+  $ generaldomo --help  
+  #+end_export
+
+The simple, self-contained "tripping" example with one or the other
+"serverish" socket type:
+
+#+begin_example
+  $ generaldomo tripping -n 1000 -f router -b router
+  $ generaldomo tripping -n 1000 -f server -b server
+#+end_example
+
+To run the full Majordomo example, run each in three terminals:
+
+#+begin_example
+$ generaldomo broker --verbose -s server
+$ generaldomo echo --verbose -s client
+$ generaldomo client --verbose -n 2 -s client echo hello world
+#+end_example
+
+Likewise this trio can be run with the ROUTER/DEALER socket types.
+The ~broker~ taking ~-s router~ with ~echo~ and ~client~ taking ~-s dealer~.
+
+* Discussion
+
+This package is not particularly useful for anything practical except
+learning.  It was written to understand the broken symmetry between
+the ROUTER/DEALER pair and the SERVER/CLIENT pair.  
+
+In the modified version of copy of [[file:generaldomo/zhelpers.py][zhelpers.py]] there are "serverish"
+and "clientish" functions that wrap send/recv which perform type
+erasure between the two pairs of sockets.  These four functions embody
+what is needed to support Majordomo protocol with the new
+SERVER/CLIENT sockets.  
+
+
+

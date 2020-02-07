@@ -3,6 +3,7 @@
 Helper module for example applications. Mimics ZeroMQ Guide's zhelpers.h.
 """
 
+import sys
 import binascii
 import os
 from random import randint
@@ -19,6 +20,7 @@ def socket_set_hwm(socket, hwm=-1):
 
 def dump(msg_or_socket):
     """Receives all message parts from socket, printing each frame neatly"""
+    print(msg_or_socket)
     if isinstance(msg_or_socket, zmq.Socket):
         # it's a socket, call on current message
         if msg_or_socket.type == zmq.SERVER:
@@ -131,6 +133,9 @@ def serverish_send(sock, cid, msg, *args, **kwds):
 
     if sock.type == zmq.SERVER:
         frame = zmq.Frame(data=encode_message(msg))
+        if isinstance(cid, bytes):
+            # hope-and-pray oriented programming
+            cid = int.from_bytes(cid, sys.byteorder)
         frame.routing_id = cid
         return sock.send(frame)
 
