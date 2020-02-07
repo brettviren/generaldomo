@@ -3,6 +3,10 @@
 While this example runs in a single process, that is just to make
 it easier to start and stop the example. Client thread signals to
 main when it's ready.
+
+Originally from Zguide examples, generalized to use CLIENT/SERVER by
+brett.viren@gmail.com
+
 """
 
 import sys
@@ -12,42 +16,9 @@ import time
 import zmq
 
 from .zhelpers import zpipe
+from .zhelpers import serverish_recv, serverish_send
+from .zhelpers import clientish_recv, clientish_send
 
-def serverish_recv(sock, *args, **kwds):
-    '''Return a message from a serverish socket.
-
-    The socket may be of type ROUTER or SERVER.  Return list of
-    [id,msg]
-
-    '''
-    if sock.type == zmq.SERVER:
-        msg = sock.recv(copy=False)
-        return [msg.routing_id,  msg]
-                
-    if sock.type == zmq.ROUTER:
-        msg = sock.recv_multipart(copy=False, *args, **kwds)
-        msg[0] = msg[0].bytes
-        #print ("broker recv",msg)
-        return msg
-    raise ValueError(f'unknown socket type {sock.type}')
-
-def serverish_send(sock, cid, msg, *args, **kwds):
-    '''Send a message via a serverish socket.
-    '''
-
-    if sock.type == zmq.SERVER:
-        msg.routing_id = cid
-        return sock.send(msg)
-
-    if sock.type == zmq.ROUTER:
-        if not isinstance(msg, list):
-            msg = [msg]
-        msg = [cid] + msg
-        #print ("broker send",msg)
-        return sock.send_multipart(msg)
-    
-    raise ValueError(f'unknown socket type {sock.type}')
-    
 
 def client_task (ctx, pipe, stype, requests=10000, verbose=False):
     client = ctx.socket(stype)
@@ -60,8 +31,10 @@ def client_task (ctx, pipe, stype, requests=10000, verbose=False):
     print ("Synchronous round-trip test...")
     start = time.time()
     for r in range(requests):
-        client.send(f'hello s {r}'.encode('utf-8'))
-        msg = client.recv().decode('utf-8')
+        clientish_send(client, f'hello s {r}'.encode('utf-8'))
+        #client.send(f'hello s {r}'.encode('utf-8'))
+        msg = clientish_recv(client)[0].decode('utf-8')
+        #msg = client.recv().decode('utf-8')
         #print (f'->sc {msg}')
         parts = msg.split()
         assert(len(parts) == 3)
@@ -73,9 +46,9 @@ def client_task (ctx, pipe, stype, requests=10000, verbose=False):
     print ("Asynchronous round-trip test...")
     start = time.time()
     for r in range(requests):
-        client.send(f'hello a {r}'.encode('utf-8'))
+        clientish_send(client, f'hello a {r}'.encode('utf-8'))
     for r in range(requests):
-        msg = client.recv().decode('utf-8')
+        msg = clientish_recv(client)[0].decode('utf-8')
         #print (f'->ac {msg}')
         parts = msg.split()
         assert(len(parts) == 3)
@@ -94,10 +67,10 @@ def worker_task(stype, verbose=False):
     worker.connect("tcp://localhost:5556")
     time.sleep(0.5)
     print (f"Worker with socket {stype}...")
-    worker.send(b"greetings")
+    clientish_send(worker, b"greetings")
     while True:
-        msg = worker.recv_multipart(copy=False)
-        worker.send_multipart(msg)
+        msg = clientish_recv(worker)
+        clientish_send(worker, msg)
     ctx.destroy(0)
 
 def broker_task(fes_type, bes_type, verbose=False):
@@ -117,8 +90,8 @@ def broker_task(fes_type, bes_type, verbose=False):
     feid = beid = None
 
     beid, msg = serverish_recv(backend)
-    print (msg.bytes)
-    assert(msg.bytes == b"greetings")
+    print (msg)
+    assert(msg[0] == b"greetings")
 
     fe_waiting = list()
     be_waiting = list()
