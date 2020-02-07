@@ -60,16 +60,28 @@ def client_task (ctx, pipe, stype, requests=10000, verbose=False):
     print ("Synchronous round-trip test...")
     start = time.time()
     for r in range(requests):
-        client.send(b"hello")
-        client.recv()
+        client.send(f'hello s {r}'.encode('utf-8'))
+        msg = client.recv().decode('utf-8')
+        #print (f'->sc {msg}')
+        parts = msg.split()
+        assert(len(parts) == 3)
+        assert(parts[0] == 'hello')
+        assert(parts[1] == 's')
+        assert(parts[2] == str(r))
     print (" %d calls/second" % (requests / (time.time()-start)))
 
     print ("Asynchronous round-trip test...")
     start = time.time()
     for r in range(requests):
-        client.send(b"hello")
+        client.send(f'hello a {r}'.encode('utf-8'))
     for r in range(requests):
-        client.recv()
+        msg = client.recv().decode('utf-8')
+        #print (f'->ac {msg}')
+        parts = msg.split()
+        assert(len(parts) == 3)
+        assert(parts[0] == 'hello')
+        assert(parts[1] == 'a')
+        assert(parts[2] == str(r))
     print (" %d calls/second" % (requests / (time.time()-start)))
 
     # signal done:
@@ -104,6 +116,10 @@ def broker_task(fes_type, bes_type, verbose=False):
 
     feid = beid = None
 
+    beid, msg = serverish_recv(backend)
+    print (msg.bytes)
+    assert(msg.bytes == b"greetings")
+
     fe_waiting = list()
     be_waiting = list()
 
@@ -119,18 +135,19 @@ def broker_task(fes_type, bes_type, verbose=False):
 
         if backend in items:
             beid, msg = serverish_recv(backend)
-            if msg.bytes != b"greetings":
-                fe_waiting.append(msg)
+            fe_waiting.append(msg)
 
         if feid:
             for msg in fe_waiting:
+                #print(f'b->f {msg}')
                 serverish_send(frontend, feid, msg)
-            fe_waiting = list()
+            fe_waiting.clear()
                     
         if beid:
             for msg in be_waiting:
+                #print(f'f->b {msg}')
                 serverish_send(backend, beid, msg)
-            be_wating = list()
+            be_waiting.clear()
 
 def main(fes_type=zmq.ROUTER, bes_type=zmq.ROUTER,
          requests = 10000, verbose=False):
