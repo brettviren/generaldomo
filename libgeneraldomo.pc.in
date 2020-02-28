@@ -1,0 +1,10 @@
+prefix=@prefix@
+libdir=@libdir@
+includedir=${prefix}/include
+
+Name: generaldomo
+Description: A somewhat generalized version of the ZeroMQ Majordomo pattern.
+Version: @VERSION@
+Libs: -L${libdir} @LLIBS@
+Cflags: -I${includedir}
+Requires: @REQUIRES@

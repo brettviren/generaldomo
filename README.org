@@ -1,5 +1,7 @@
 #+title: Generaldomo
 
+A somewhat generalized version of the ZeroMQ Majordomo pattern.
+
 * You Douzo, I Domo
 
 ** Majordomo
@@ -56,6 +58,50 @@ FIXME: check into exactly how ZeroMQ packets multi-part and use the
 same definition here.
 
 * Install
+
+** C++
+
+*** Installation requirements
+
+The Generaldomo C++17 API requires ~libzmq~ to have been built with
+"draft" sockets.  The easiest way to do this is by installing from
+recent "master" branch of the official repository.  ZeroMQ community
+tends to keep "master" working well with each commit essentially being
+a new release.
+
+#+begin_example
+  $ git clone https://github.com/zeromq/libzmq.git
+  $ cd libzmq/
+  $ ./autogen.sh
+  $ ./configure --prefix=$HOME/opt/zmq
+  $ make -j$(nproc)
+  $ make install
+#+end_example
+
+The [[https://github.com/zeromq/cppzmq][cppzmq]] C++ interface to ~libzmq~ is used by generaldomo C++ library.  It essentially consists of two header files which are included directly an no installation is required.
+
+*** Install
+
+The C++ API installs with ~waf~.  Assuming ~libzmq~ was installed as
+above, Generaldomo C++ API may be installed as:
+
+#+begin_example
+  $ wget -O ~/bin/waf https://waf.io/waf-2.0.19
+  $ chmod ~/bin/waf
+
+  $ export PKG_CONFIG_PATH=$HOME/opt/zmq/lib/pkgconfig
+  $ waf configure --prefix=$HOME/opt/zmq
+#+end_example
+
+
+
+** Python
+
+Generaldomo Python API requires Python 3 and is independent from the
+C++ API.  PyZMQ is required and must provide the "draft" sockets.
+Assuming ~libzmq~ was installed as above the following commands will
+provide a suitable Python environment in which to install and use
+Generaldomo Python API.
 
 #+begin_example
   $ python3 -m venv /path/to/venv

@@ -2,3 +2,5 @@
 *.egg-info
 venv
 __pycache__
+.lock-waf*
+build
