@@ -26,7 +26,7 @@ void myactor(zmq::socket_t& pipe, std::string greeting, bool fast_exit)
         return;
     }
 
-    std::cerr << "myactor simulating work\n";
+    std::cerr << "myactor simulating work, try to Ctrl-c me\n";
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
 
