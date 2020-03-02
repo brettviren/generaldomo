@@ -1,8 +1,13 @@
 #+title: Generaldomo
 
-A somewhat generalized version of the ZeroMQ Majordomo pattern.
+A somewhat generalized version of the ZeroMQ Majordomo pattern.  The
+main motivation is to support clients or workers which run in threaded
+environments that will cause problems with non-thread-safe REQ or
+DEALER.
 
 * You Douzo, I Domo
+
+In which the generalization is described.
 
 ** Majordomo
 
@@ -39,23 +44,27 @@ Python3, are in [[file:md/][md/]] for reference.
 The Generaldomo Package (GDP) generalizes 7/MDP starting with the
 example code provided in the ZeroMQ guide.  GDP is a superset which
 simplifies to 7/MDP when ROUTER is used for the broker.  The extension
-only applies when the router uses a SERVER socket.  In the remainder,
-GDP will refer to this extension although strictly GDP also
-encompasses 7/MDP.
+only applies when the broker uses a SERVER socket.  That is, a GDP
+broker configured to use ROUTER *is* a 7/MDP broker.
 
-The main motivation for GDP is to support clients or workers to run in
-threaded environments that will cause problems with non-thread-safe
-DEALER/ROUTER.  
+When speaking to a SERVER GDP broker the worker or client must use the
+GDP-extended protocol.
 
-As CLIENT/SERVER do not support multipart messages needed for 7/MDP
-GDP is essentially defined by how otherwise 7/MDP-compliant multi-part
-messages are packed into a single-part.  This packing is done by
-prefixing the data of one part (one frame) with a 32 bit value holding
-the size of that part in bytes and concatenating the result to form
-the single-part message.
+- All messages are multipart but *encoded* into single part messages.
+  Each part shall be encoded in a manner compatible with the CZMQ
+  ~zmsg_encode()~ function.
 
-FIXME: check into exactly how ZeroMQ packets multi-part and use the
-same definition here.
+- All messages: the initial "Frame 0: empty frame" which is implicit
+  when using REQ and explicit when using DEALER is not included at all
+  when using CLIENT.  The first part of a CLIENT message corresponds
+  to "Frame 1" in 7/MDP.
+
+- Worker messages: "Frame 3: Client address (envelope stack)" holds
+  the same conceptual value if different value representation in GDP
+  as in 7/MDP however the.  Worker should treat this as opaque data in
+  both cases.
+
+
 
 * Install
 
@@ -140,42 +149,4 @@ $ generaldomo client --verbose -n 2 -s client echo hello world
 Likewise this trio can be run with the ROUTER/DEALER socket types.
 The ~broker~ taking ~-s router~ with ~echo~ and ~client~ taking ~-s dealer~.
 
-* Internals
-
-As described above, Generaldomo generalizes Majordomo 7/MDP to allow a
-choice between SERVER or ROUTER for the broker.  This flexibility may
-be achieved by developing two separate implementations for the broker.
-However, the differences between the two socket patterns is not deep.
-At the cost of some additional copying we can provide a sort of
-type-erasure.  
-
-The first step is to understand that the two sockets differ in two
-orthogonal ways.
-
-- message parts :: SERVER produces single-part, ROUTER produces multi-part 
-- routing IDs :: SERVER attaches the ID as message metadata, ROUTER
-                 prefixes a stack of N (in general) IDs, each ID in an
-                 individual frame to the message (address envelope
-                 stack).  SERVER IDs are 32 bit unsigned ints, ROUTER
-                 IDs are 1 to 255 bytes with the first byte non-zero.
-
-These differences can be "erased" at the point of sending and
-receiving a message.  A convention is chosen for the higher level
-broker code is chosen and the low level ~send()/recv()~ calls are
-wrapped with code that switches on the socket type
-
-The convention chosen is as follows:
-
-- routing ID :: the routing ID is held in a variant data structure
-                which is treated opaque by the higher level code.  It
-                holds a ~uint32_t~ in the case of a SERVER and it holds
-                the address envelope stack as a multipart message in
-                the case of a ROUTER.
-
-- payload :: the non-ID part of the message is presented as a
-             multipart message identical to as described in 7/MDP.
-             For ROUTER, the address envelope stack is stripped and
-             the remainder of the multipart is 7/MDP.  For SERVER, the
-             single-part message is decoded to multipart.  The
-             encoding/decoding follows the scheme of CZMQ ~zmsg_t/zframe_t~.
 

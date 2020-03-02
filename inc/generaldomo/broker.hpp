@@ -30,11 +30,19 @@ namespace generaldomo {
 
     private:
 
+        // Erase the difference between SERVER routing ID and ROUTER
+        // envelop stack.  The former is uint32_t which we stuff in to
+        // a string.  The latter is already a string.  It's opaque
+        // outside of the send/recv methods.
+        typedef std::string remote_identity_t;
+
         struct Service;
 
         // This is a proxy for the remote worker
         struct Worker {
-            std::string identity; 
+            // The identity of a worker.
+            remote_identity_t identity; 
+
             // The owner, if known.
             Service* service{nullptr};
             // Expire the worker at this time, heartbeat refreshes.
@@ -44,10 +52,14 @@ namespace generaldomo {
         // This collects workers for a given service
         struct Service {
 
-            // The service name.
+            // Service name, that is the "thing" that its workers know how to do.
             std::string name;
-            // List of client requests for this service.
-            std::deque<zmq::message_t*> requests;
+
+            // List of client requests for this service.  These need
+            // to be multipart_t which are not available as pointer!
+            // How to store effciently to avoid copy? FIXME
+            std::deque<zmq::multipart_t> requests;
+
             // List of waiting workers.
             std::list<Worker*> waiting;
             // How many workers the service has
@@ -63,21 +75,21 @@ namespace generaldomo {
         void service_dispatch(Service* srv, zmq::message_t* msg);
         void service_internal(std::string service_name, zmq::message_t* msg);
 
-        Worker* worker_require(std::string identity);
+        Worker* worker_require(remote_identity_t identity);
         void worker_delete(Worker* wkr, int disconnect);
-        void worker_process(std::string  sender, zmq::message_t* msg);
+        void worker_process(remote_identity_t sender, zmq::multipart_t& mmsg);
         void worker_send(Worker* wkr, std::string command,
                          std::string option, zmq::message_t* msg);
         void worker_waiting(Worker* wkr);
 
-        void client_process(std::string sender, zmq::message_t* msg);
+        void client_process(remote_identity_t sender, zmq::message_t* msg);
 
     private:
 
         zmq::socket_t m_sock;
         logbase_t& m_log;
-        std::unordered_map<std::string, Service*> m_services;
-        std::unordered_map<std::string, Worker*> m_workers;
+        std::unordered_map<remote_identity_t, Service*> m_services;
+        std::unordered_map<remote_identity_t, Worker*> m_workers;
         std::unordered_set<Worker*> m_waiting;
     };
 
