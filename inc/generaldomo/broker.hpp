@@ -5,6 +5,8 @@
 #include "zmq.hpp"
 #include <unordered_map>
 #include <unordered_set>
+#include <deque>
+#include <list>
 
 namespace generaldomo {
 
@@ -14,14 +16,17 @@ namespace generaldomo {
     public:
 
         /// Create a broker with a ROUTER or SERVER socket 
-        Broker(zmq::socket_t&& sock, util::logbase_t& log);
+        Broker(zmq::socket_t&& sock, logbase_t& log);
         ~Broker();
 
         /// Bind the socket to the address
         void bind(std::string address);
 
-        /// Begin brokering
+        /// Begin brokering (main loop)
         void start();
+
+        /// Process one input on socket
+        void proc_one();
 
     private:
 
@@ -33,7 +38,7 @@ namespace generaldomo {
             // The owner, if known.
             Service* service{nullptr};
             // Expire the worker at this time, heartbeat refreshes.
-            int64_T expiry{0};
+            int64_t expiry{0};
         };
 
         // This collects workers for a given service
@@ -70,10 +75,10 @@ namespace generaldomo {
     private:
 
         zmq::socket_t m_sock;
-
+        logbase_t& m_log;
         std::unordered_map<std::string, Service*> m_services;
         std::unordered_map<std::string, Worker*> m_workers;
-        std::unordered_set<Worker*> m_workers;
+        std::unordered_set<Worker*> m_waiting;
     };
 
 
@@ -90,7 +95,7 @@ namespace generaldomo {
      * If ROUTER, the broker will act as a 7/MDP v0.1 broker.
      * Else it will act as a GDP broker.
      */
-    void broker_actor(zmq::socket& pipe, std::string address, int socktype);
+    void broker_actor(zmq::socket_t& pipe, std::string address, int socktype);
 
 }
 

@@ -23,14 +23,15 @@ def configure(cfg):
     cfg.check_cfg(package='libzmq', uselib_store='ZMQ', **p);
 
     if cfg.options.with_cppzmq_include:
-        cfg.env.append_value('INCLUDES_CPPZMQ', cfg.options.with_cppzmq_include)
-    cfg.check_cxx(header_name='zmq.hpp', uselib_store='CPPZMQ', use='ZMQ'); 
+        cfg.env.INCLUDES_CPPZMQ = [cfg.options.with_cppzmq_include]
+
+    cfg.check_cxx(header_name='zmq.hpp', uselib_store='CPPZMQ', use='ZMQ CPPZMQ'); 
 
     cfg.check(features='cxx cxxprogram', lib=['pthread'],
               uselib_store='PTHREAD')
     cfg.write_config_header('config.h')
-    cfg.env['USES_LIB'] = ['ZMQ']
-    cfg.env['USES_TEST'] = ['ZMQ','PTHREAD']
+    cfg.env['USES_LIB'] = ['ZMQ', 'CPPZMQ']
+    cfg.env['USES_TEST'] = cfg.env['USES_LIB'] + ['PTHREAD']
     pass
 
 from waflib.Configure import conf

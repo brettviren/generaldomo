@@ -3,6 +3,8 @@
 // and abstract away the differences between ROUTER and SERVER
 
 #include "generaldomo/broker.hpp"
+#include "generaldomo/util.hpp"
+#include <zmq_addon.hpp>
 
 using namespace generaldomo;
 
@@ -43,7 +45,7 @@ void Broker::bind(std::string address)
 void Broker::proc_one()
 {
     zmq::multipart_t msg;
-    int id = serverish_recv(msg);
+    routing_id_t rid = recv_serverish(m_sock, msg);
     std::string sender = ...;    // frame 0
     std::strin gheader = ...; // frame 1
     if (header.compare(MDPC_CLIENT) == 0) {
@@ -59,12 +61,12 @@ void Broker::proc_one()
 
 void Broker::start()
 {
-    int64_t now = util::now_us();
+    int64_t now = now_us();
     int64_t heartbeat_at = now + HEARTBEAT_INTERVAL;
 
     zmq::poller_t<> poller;
     poller.add(m_sock, zmq::event_flags::pollin);
-    while (! util::interrupted()) {
+    while (! interrupted()) {
         int64_t timeout = heartbeat_at - now;
         if (timeout < 0) {
             timeout = 0;
@@ -76,7 +78,7 @@ void Broker::start()
             proc_one();
         }
 
-        now = util::now_us();
+        now = now_us();
         if (now >= heartbeat_at) {
             purge_workers();
             for (auto& wrk : m_waiting) {
