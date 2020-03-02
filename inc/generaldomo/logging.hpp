@@ -1,6 +1,8 @@
 #ifndef GENERALDOMO_LOGGING_HPP_SEEN
 #define GENERALDOMO_LOGGING_HPP_SEEN
 
+#include <string>
+
 namespace generaldomo {
 
     struct logbase_t {
@@ -11,10 +13,9 @@ namespace generaldomo {
     };
     struct console_log : public logbase_t  {
         enum class log_level : int {
-            debug=1, info=2, error=3;
+            debug=1, info=2, error=3
         };
-        log_level level;
-        console_log(log_level level=2) : level(level) {}
+        log_level level{2};
         virtual ~console_log();
         virtual void debug(const std::string& msg);
         virtual void info(const std::string& msg);

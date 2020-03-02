@@ -1,8 +1,8 @@
 #include "generaldomo/logging.hpp"
+#include <cstdio>
+
 using namespace generaldomo;
 
-
-console_log::console_log(
 
 void console_log::debug(const std::string& msg)
 {
@@ -31,5 +31,5 @@ void console_log::always(const std::string& msg)
     strftime (formatted, 20, "%y-%m-%d %H:%M:%S ", loctime);
     printf ("%s", formatted);
     const char* code=" DIE";
-    printf("%c: %s", code[level], msg.c_str());
+    printf("%c: %s", code[(int)level], msg.c_str());
 }

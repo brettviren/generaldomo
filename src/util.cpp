@@ -1,7 +1,8 @@
+#include "generaldomo/util.hpp"
 #include <chrono>
 #include <signal.h>
-using namespace generaldomo
 
+using namespace generaldomo
 
 util::routing_id_t util::recv_serverish(zmq::socket_t& sock, zmq::multipart_t& mmsg)
 {

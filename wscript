@@ -9,6 +9,10 @@ out = 'build'
 def options(opt):
     opt.load('compiler_cxx')
     opt.load('waf_unit_test')
+
+    opt.add_option('--with-cppzmq-include', type='string',
+                   default=None,
+                   help="give cppzmq include installation location")
     pass
 
 def configure(cfg):
@@ -17,6 +21,11 @@ def configure(cfg):
     cfg.load('waf_unit_test')
     p = dict(mandatory=True, args='--cflags --libs')
     cfg.check_cfg(package='libzmq', uselib_store='ZMQ', **p);
+
+    if cfg.options.with_cppzmq_include:
+        cfg.env.append_value('INCLUDES_CPPZMQ', cfg.options.with_cppzmq_include)
+    cfg.check_cxx(header_name='zmq.hpp', uselib_store='CPPZMQ', use='ZMQ'); 
+
     cfg.check(features='cxx cxxprogram', lib=['pthread'],
               uselib_store='PTHREAD')
     cfg.write_config_header('config.h')
