@@ -2,13 +2,31 @@
 #define GENERALDOMO_BROKER_HPP_SEEN
 
 #include "generaldomo/logging.hpp"
-#include "zmq.hpp"
+#include "generaldomo/util.hpp"
+#include <zmq.hpp>
+#include <zmq_addon.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <deque>
 #include <list>
+#include <functional>
 
 namespace generaldomo {
+
+    /*! The generaldomo broker actor.
+     *
+     * The broker is in the form of a function intended to be called
+     * from a zmq::actor_t.
+     *
+     * The address should be in the usual ZeroMQ format.  The borker
+     * will bind() to it.
+     * 
+     * The socktype should be either SERVER or ROUTER.
+     * If ROUTER, the broker will act as a 7/MDP v0.1 broker.
+     * Else it will act as a GDP broker.
+     */
+    void broker_actor(zmq::socket_t& pipe, std::string address, int socktype);
+
 
     /*! The generaldomo broker class */
 
@@ -28,13 +46,17 @@ namespace generaldomo {
         /// Process one input on socket
         void proc_one();
 
+        typedef std::chrono::milliseconds time_unit_t;
+
+        /// Do heartbeat processing given next heatbeat time. 
+        void proc_heartbeat(time_unit_t heartbeat_at);
+
     private:
 
-        // Erase the difference between SERVER routing ID and ROUTER
-        // envelop stack.  The former is uint32_t which we stuff in to
-        // a string.  The latter is already a string.  It's opaque
-        // outside of the send/recv methods.
-        typedef std::string remote_identity_t;
+        std::function<remote_identity_t(zmq::socket_t& server_socket,
+                                        zmq::multipart_t& mmsg)> recv;
+        std::function<void(zmq::socket_t& server_socket,
+                           zmq::multipart_t& mmsg, remote_identity_t rid)> send;
 
         struct Service;
 
@@ -46,7 +68,7 @@ namespace generaldomo {
             // The owner, if known.
             Service* service{nullptr};
             // Expire the worker at this time, heartbeat refreshes.
-            int64_t expiry{0};
+            time_unit_t expiry{0};
         };
 
         // This collects workers for a given service
@@ -62,6 +84,7 @@ namespace generaldomo {
 
             // List of waiting workers.
             std::list<Worker*> waiting;
+
             // How many workers the service has
             size_t nworkers{0};
 
@@ -72,17 +95,17 @@ namespace generaldomo {
     private:
         void purge_workers();
         Service* service_require(std::string name);
-        void service_dispatch(Service* srv, zmq::message_t* msg);
-        void service_internal(std::string service_name, zmq::message_t* msg);
+        void service_dispatch(Service* srv);
+        void service_internal(remote_identity_t rid, std::string service_name,
+                              zmq::multipart_t& mmsg);
 
         Worker* worker_require(remote_identity_t identity);
-        void worker_delete(Worker* wkr, int disconnect);
+        void worker_delete(Worker*& wrk, int disconnect);
+
         void worker_process(remote_identity_t sender, zmq::multipart_t& mmsg);
-        void worker_send(Worker* wkr, std::string command,
-                         std::string option, zmq::message_t* msg);
         void worker_waiting(Worker* wkr);
 
-        void client_process(remote_identity_t sender, zmq::message_t* msg);
+        void client_process(remote_identity_t client_id, zmq::multipart_t& mmsg);
 
     private:
 
@@ -94,20 +117,6 @@ namespace generaldomo {
     };
 
 
-
-    /*! The generaldomo broker actor.
-     *
-     * The broker is in the form of a function intended to be called
-     * from a zmq::actor_t.
-     *
-     * The address should be in the usual ZeroMQ format.  The borker
-     * will bind() to it.
-     * 
-     * The socktype should be either SERVER or ROUTER.
-     * If ROUTER, the broker will act as a 7/MDP v0.1 broker.
-     * Else it will act as a GDP broker.
-     */
-    void broker_actor(zmq::socket_t& pipe, std::string address, int socktype);
 
 }
 

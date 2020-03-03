@@ -4,24 +4,38 @@
 
 #include "generaldomo/broker.hpp"
 #include "generaldomo/util.hpp"
-#include <zmq_addon.hpp>
+#include "generaldomo/protocol.hpp"
 
 using namespace generaldomo;
 
+
+
+// fixme: make these configurable
 #define HEARTBEAT_LIVENESS  3       //  3-5 is reasonable
-#define HEARTBEAT_INTERVAL  2500    //  msecs
-#define HEARTBEAT_EXPIRY    HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS
+const Broker::time_unit_t HEARTBEAT_INTERVAL{2500};
+const Broker::time_unit_t HEARTBEAT_EXPIRY{HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS};
+
 
 Broker::Service::~Service () {
-    for (auto req : requests) {
-        delete(req);
-    }
 }
+
 
 Broker::Broker(zmq::socket_t&& sock, logbase_t& log)
     : m_sock(std::move(sock))
     , m_log(log)
 {
+    int stype = sock.getsockopt<int>(ZMQ_TYPE);
+    if (ZMQ_SERVER == stype) {
+        recv = recv_server;
+        send = send_server;
+        return;
+    }
+    if(ZMQ_ROUTER == stype) {
+        recv = recv_router;
+        send = send_router;
+        return;
+    }
+    throw std::runtime_error("generaldomo::Broker requires SERVER or ROUTER socket");
 }
 
 Broker::~Broker()
@@ -42,71 +56,66 @@ void Broker::bind(std::string address)
     m_sock.bind(address);
 }
 
-Broker::remote_identity_t Broker::recv(zmq::multipart_t& mmsg)
-{
-........
-}
-
-Broker::send(zmq::multipart_t& mmsg, Broker::remote_identity_t)
-{
-.............
-}
 
 void Broker::proc_one()
 {
     zmq::multipart_t mmsg;
-    remote_identity_t sender = recv(mmsg);
+    remote_identity_t sender = recv(m_sock, mmsg);
     std::string header = mmsg.popstr(); // 7/MDP frame 1
-    if (header == MDPC_CLIENT) {
+    if (header == mdp::client::ident) {
         client_process(sender, mmsg);
     }
-    else if (header == MDPW_WORKER) {
-        worker_process(sender, mmsg)
+    else if (header == mdp::worker::ident) {
+        worker_process(sender, mmsg);
     }
     else {
         m_log.error("invalid message from " + sender);
     }
 }
 
-void Broker::proc_heartbeat(int64_t heartbeat_at)
+void Broker::proc_heartbeat(time_unit_t heartbeat_at)
 {
-    auto now = now_us();
+    auto now = now_ms();
     if (now < heartbeat_at) {
         return;
     }
     purge_workers();
     for (auto& wrk : m_waiting) {
-        worker_send(&wrk, (char*)MDPW_HEARTBEAT, "", NULL);
+        zmq::multipart_t mmsg;
+        mmsg.pushstr(mdp::worker::heartbeat);
+        mmsg.pushstr(mdp::worker::ident);
+        send(m_sock, mmsg, wrk->identity);
     }
-    heartbeat_at += HEARTBEAT_INTERVAL;
 }
 
 void Broker::start()
 {
-    int64_t now = now_us();
-    int64_t heartbeat_at = now + HEARTBEAT_INTERVAL;
+    time_unit_t now = now_ms();
+    time_unit_t heartbeat_at = now + HEARTBEAT_INTERVAL;
 
     zmq::poller_t<> poller;
     poller.add(m_sock, zmq::event_flags::pollin);
     while (! interrupted()) {
-        int64_t timeout = heartbeat_at - now;
-        if (timeout < 0) {
-            timeout = 0;
+        time_unit_t timeout{0};
+        if (heartbeat_at > now ) {
+            timeout = heartbeat_at - now;
         }
 
-        std::vector<zmq::poller_event<>> events(1);
+        std::vector< zmq::poller_event<> > events(1);
         int rc = poller.wait_all(events, timeout);
         if (rc > 0) {           // got one
             proc_one();
         }
         proc_heartbeat(heartbeat_at);
-        now = now_us();
+
+        heartbeat_at += HEARTBEAT_INTERVAL;
+        now = now_ms();
     }
 }
 
 void Broker::purge_workers()
 {
-    auto now = now_us();
+    auto now = now_ms();
     // can't remove from the set while iterating, so make a temp
     std::vector<Worker*> dead;
     for (auto wrk : m_waiting) {
@@ -116,7 +125,7 @@ void Broker::purge_workers()
     }
     for (auto wrk : dead) {
         m_log.debug("deleting expired worker: " + wrk->identity);
-        worker_delete(wrk,0);
+        worker_delete(wrk,0);   // operates on m_waiting set
     }
 }
 
@@ -131,35 +140,50 @@ Broker::Service* Broker::service_require(std::string name)
     return srv;
 }
 
-void Broker::service_dispatch(Service* srv, zmq::multipart_t& mmsg)
+void Broker::service_internal(remote_identity_t rid, std::string service_name, zmq::multipart_t& mmsg)
 {
-    if (msg.size()) {
-        srv->requests.push_back(mmsg);//fixme: copy!
-    }
-    purge_workers();
-    while (srv->wating.size() and srv->requests.size()) {
+    zmq::multipart_t response;
 
-        Worker* wrk = srv->waiting.front();
-        for (auto maybe : srv->waiting) {
-            if (wrk->expiry < maybe->expiry) {
-                wrk = maybe;
+    if (service_name == "mmi.service") {
+        std::string sn = mmsg.popstr();
+        Service* srv = m_services[sn];
+        if (srv and srv->nworkers) {
+            response.pushstr("200");
+        }
+        else {
+            response.pushstr("404");
+        }
+    }
+    else {
+        response.pushstr("501");
+    }
+
+    send(m_sock, response, rid);
+}
+
+void Broker::service_dispatch(Service* srv)
+{
+    purge_workers();
+    while (srv->waiting.size() and srv->requests.size()) {
+
+        std::list<Worker*>::iterator wrk_it = srv->waiting.begin();
+        std::list<Worker*>::iterator next = wrk_it;
+        for (++next; next != srv->waiting.end(); ++next) {
+            if ((*next)->expiry > (*wrk_it)->expiry) {
+                 wrk_it = next;
             }
         }
-        // FIXME, do we really want this copy?
-        zmq::multipart_t mmsg = srv->requests.front();
+            
+        zmq::multipart_t& mmsg = srv->requests.front();
+        mmsg.pushstr(mdp::worker::request);
+        mmsg.pushstr(mdp::worker::ident);
+        send(m_sock, mmsg, (*wrk_it)->identity);
         srv->requests.pop_front();
-        worker_send(wrk, MDPW_REQUEST, "", mmsg);
-        m_waiting.erase(*wrk);
-        srv->wating.erase(wrk);
-        // mmsg destructs
+        m_waiting.erase(*wrk_it);
+        srv->waiting.erase(wrk_it);
     }
 }
 
-void Broker::service_internal(std::string service_name, zmq::multipart_t& mmsg)
-{
-    ............
-        
-}
 
 Broker::Worker* Broker::worker_require(remote_identity_t identity)
 {
@@ -175,11 +199,22 @@ Broker::Worker* Broker::worker_require(remote_identity_t identity)
 void Broker::worker_delete(Broker::Worker*& wrk, int disconnect)
 {
     if (disconnect) {
-        worker_send(wrk, MDPW_DISCONNECT, "", NULL);
+        zmq::multipart_t mmsg;
+        mmsg.pushstr(mdp::worker::disconnect);
+        mmsg.pushstr(mdp::worker::ident);
+        send(m_sock, mmsg, wrk->identity);
     }
     if (wrk->service) {
-        size_t nremoved = wrk->service->waiting.erase(wrk);
-        wrk->service->nworkers -= nremoved;
+        for (std::list<Worker*>::iterator it = wrk->service->waiting.begin();
+                 it != wrk->service->waiting.end();) {
+            if (*it == wrk) {
+                it = wrk->service->waiting.erase(it);
+            }
+            else {
+                ++it;
+            }
+        }
+        --wrk->service->nworkers;
     }
     m_waiting.erase(wrk);
     m_workers.erase(wrk->identity);
@@ -194,7 +229,7 @@ void Broker::worker_process(remote_identity_t sender, zmq::multipart_t& mmsg)
     bool worker_ready = (m_workers.find(sender) != m_workers.end());
     Worker* wrk = worker_require(sender);
 
-    if (MDPW_READY == command) {
+    if (mdp::worker::ready == command) {
         if (worker_ready) {     // protocol error
             m_log.error("protocol error (double ready) from: " + sender);
             worker_delete(wrk, 1);
@@ -212,27 +247,28 @@ void Broker::worker_process(remote_identity_t sender, zmq::multipart_t& mmsg)
         worker_waiting(wrk);
         return;
     }
-    if (MDWP_REPLY == command) {
+    if (mdp::worker::reply == command) {
         if (!worker_ready) {
             worker_delete(wrk, 1);
             return;
         }
         remote_identity_t client_id = mmsg.popstr();
+        // mmsg now at Frame 4, empty address (envelope stack)
         mmsg.pushstr(wrk->service->name);
-        mmsg.pushstr(MDPC_CLIENT);
-        send(mmsg, client_id);
+        mmsg.pushstr(mdp::client::ident);
+        send(m_sock, mmsg, client_id);
         worker_waiting(wrk);
         return;
     }
-    if (MDPW_HEARTBEAT == command) {
+    if (mdp::worker::heartbeat == command) {
         if (!worker_ready) {
             worker_delete(wrk, 1);
             return;
         }
-        wrk->expiry = now_us() + HEARTBEAT_EXPIRY;
+        wrk->expiry = now_ms() + HEARTBEAT_EXPIRY;
         return;
     }
-    if (MDPW_DISCONNECT == command) {
+    if (mdp::worker::disconnect == command) {
         worker_delete(wrk, 0);
         return;
     }
@@ -240,39 +276,33 @@ void Broker::worker_process(remote_identity_t sender, zmq::multipart_t& mmsg)
 }
 
 
-
-void Broker::worker_send(Broker::Worker* wkr, std::string command,
-                         std::string option, zmq::message_t* msg)
-{
-........
-}
-
 void Broker::worker_waiting(Broker::Worker* wrk)
 {
     m_waiting.insert(wrk);
     wrk->service->waiting.push_back(wrk);
-    wrk->expiry = now_us() + HEARTBEAT_EXPIRY;
+    wrk->expiry = now_ms() + HEARTBEAT_EXPIRY;
+    
     service_dispatch(wrk->service);
 }
 
 void Broker::client_process(remote_identity_t client_id, zmq::multipart_t& mmsg)
 {
-    std::string service_name = mmsg.popstr();
+    std::string service_name = mmsg.popstr(); // Client REQUEST Frame 2 
     Service* srv = service_require(service_name);
-    mmsg.pushmem(NULL,0);
-    mmsg.pushstr(client_id);
     if (service_name.size() >= 4 and service_name.find_first_of("mmi.") == 0) {
-        service_internal(service_name, mmsg);
+        service_internal(client_id, service_name, mmsg);
     }
     else {
-        service_dispatch(srv, mmsg);
+        mmsg.pushstr(client_id); // Worker REQUEST Frame 3
+        srv->requests.emplace_back(std::move(mmsg));
+        service_dispatch(srv);
     }
 }
 
 
+// An actor function running a Broker.
 
-
-void broker(zmq::socket& pipe, std::string address, int socktype)
+void generaldomo::broker_actor(zmq::socket_t& pipe, std::string address, int socktype)
 {
 }
 

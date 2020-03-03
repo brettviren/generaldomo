@@ -26,6 +26,8 @@ def configure(cfg):
         cfg.env.INCLUDES_CPPZMQ = [cfg.options.with_cppzmq_include]
 
     cfg.check_cxx(header_name='zmq.hpp', uselib_store='CPPZMQ', use='ZMQ CPPZMQ'); 
+    cfg.check_cxx(header_name='zmq_addon.hpp', uselib_store='CPPZMQ', use='ZMQ CPPZMQ'); 
+    cfg.check_cxx(header_name='zmq_actor.hpp', uselib_store='CPPZMQ', use='ZMQ CPPZMQ'); 
 
     cfg.check(features='cxx cxxprogram', lib=['pthread'],
               uselib_store='PTHREAD')
