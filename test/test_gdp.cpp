@@ -40,11 +40,11 @@ void countdown_echo(zmq::socket_t& pipe, std::string address, int socktype)
         }
         {
             std::stringstream ss;
-            ss << "countdown echo [" << mmsg.size() << "]:\n";
+            ss << "countdown echo [" << mmsg.size() << "]:";
             while (mmsg.size()) {
-                ss << "\t" << mmsg.popstr() << "\n";
+                ss << "\n\t" << mmsg.popstr();
             }
-            log.debug(ss.str());
+            log.info(ss.str());
         }
     }
     pipe.send(zmq::message_t{}, zmq::send_flags::none);
@@ -54,10 +54,10 @@ void countdown_echo(zmq::socket_t& pipe, std::string address, int socktype)
 }
 
 
-void doit(int serverish, int clientish, int nworkers, int nclients)
+void doit(int serverish, int clientish, int nclients, int nworkers)
 {
     console_log log;
-    log.level=console_log::log_level::debug;
+
     std::stringstream ss;
     ss<<"main doit("<<serverish<<","<<clientish<<","<<nworkers<<","<<nclients<<")";
     log.info(ss.str());
@@ -69,20 +69,20 @@ void doit(int serverish, int clientish, int nworkers, int nclients)
     std::vector<std::pair<std::string, zmq::actor_t*> > actors;
 
 
-    log.info("main make broker actor");
+    log.debug("main make broker actor");
     actors.push_back({"broker",new zmq::actor_t(ctx, broker_actor, broker_address, serverish)});
 
     while (nworkers--) {
-        log.info("main make worker actor");
-        actors.push_back({"worker",new zmq::actor_t(ctx,    echo_worker, broker_address, clientish)});
+        log.debug("main make worker actor");
+        actors.push_back({"worker",new zmq::actor_t(ctx, echo_worker, broker_address, clientish)});
     }
+
     while (nclients--) {
-        log.info("main make client actor");
+        log.debug("main make client actor");
         auto client = new zmq::actor_t(ctx, countdown_echo, broker_address, clientish);
         actors.push_back({"client",client});
         clients.push_back(client);
     }
-
 
     for (auto client : clients) {
         log.debug("main wait for client");
@@ -92,18 +92,39 @@ void doit(int serverish, int clientish, int nworkers, int nclients)
 
     // terminate backwards
     for (auto it = actors.rbegin(); it != actors.rend(); ++it) {
-        log.info("main terminate actor " + it->first);
+        log.debug("main terminate actor " + it->first);
         zmq::actor_t* actor = it->second;
         actor->pipe().send(zmq::message_t{}, zmq::send_flags::none);
         delete actor;
     }
-    log.info("main doit exiting");
+    log.debug("main doit exiting");
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     generaldomo::catch_signals();
 
-    doit(ZMQ_SERVER, ZMQ_CLIENT, 1, 1);
-    //doit(ZMQ_ROUTER, ZMQ_DEALER, 1, 1);
+    std::string which = "server";
+    if (argc > 1) {
+        which = argv[1];
+    }
+
+    int nclients = 1;
+    if (argc > 2) {
+        nclients = atoi(argv[2]);
+    }
+    int nworkers = 1;
+    if (argc > 3) {
+        nworkers = atoi(argv[3]);
+    }
+
+    if (which == "server") {
+        doit(ZMQ_SERVER, ZMQ_CLIENT, nclients, nworkers);
+    }
+    else {
+        doit(ZMQ_ROUTER, ZMQ_DEALER, nclients, nworkers);
+    }
+    return 0;
 }
+
+

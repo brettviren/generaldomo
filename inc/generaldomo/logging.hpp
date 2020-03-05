@@ -15,7 +15,7 @@ namespace generaldomo {
         enum class log_level : int {
             always=0, debug=1, info=2, error=3
         };
-        log_level level{log_level::debug};
+        log_level level{log_level::info};
         virtual ~console_log();
         virtual void debug(const std::string& msg);
         virtual void info(const std::string& msg);

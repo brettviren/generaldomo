@@ -38,12 +38,12 @@ remote_identity_t generaldomo::recv_server(zmq::socket_t& server_socket,
     {
         std::stringstream ss;
         ss << "recv SERVER msg size " << msg.size()
-           << ", " << mmsg.size() << " parts \"" << rid << "\""
-           << " " << (void*)routing_id 
-           << " '" << (int)rid[0] << "'"
-           << " '" << (int)rid[1] << "'"
-           << " '" << (int)rid[2] << "'"
-           << " '" << (int)rid[3] << "'";
+           << ", " << mmsg.size() << " parts \"" << rid << "\"";
+           // << " " << (void*)routing_id 
+           // << " '" << (int)rid[0] << "'"
+           // << " '" << (int)rid[1] << "'"
+           // << " '" << (int)rid[2] << "'"
+           // << " '" << (int)rid[3] << "'";
         console_log log;
         log.debug(ss.str());
     }
@@ -86,12 +86,12 @@ void generaldomo::send_server(zmq::socket_t& server_socket,
     {
         std::stringstream ss;
         ss << "send SERVER msg size " << msg.size()
-           << ", " << mmsg.size() << " parts \"" << rid << "\""
-           << " " << (void*)routing_id 
-           << " '" << (int)rid[0] << "'"
-           << " '" << (int)rid[1] << "'"
-           << " '" << (int)rid[2] << "'"
-           << " '" << (int)rid[3] << "'";
+           << ", " << mmsg.size() << " parts \"" << rid << "\"";
+           // << " " << (void*)routing_id 
+           // << " '" << (int)rid[0] << "'"
+           // << " '" << (int)rid[1] << "'"
+           // << " '" << (int)rid[2] << "'"
+           // << " '" << (int)rid[3] << "'";
         console_log log;
         log.debug(ss.str());
     }
