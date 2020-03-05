@@ -1,4 +1,5 @@
 #include "generaldomo/util.hpp"
+#include "generaldomo/logging.hpp"
 #include <chrono>
 #include <thread>
 #include <signal.h>
@@ -6,8 +7,8 @@
 using namespace generaldomo;
 
 
-remote_identity_t recv_serverish(zmq::socket_t& sock,
-                                 zmq::multipart_t& mmsg)
+remote_identity_t generaldomo::recv_serverish(zmq::socket_t& sock,
+                                              zmq::multipart_t& mmsg)
 {
     int stype = sock.getsockopt<int>(ZMQ_TYPE);
     if (ZMQ_SERVER == stype) {
@@ -20,18 +21,37 @@ remote_identity_t recv_serverish(zmq::socket_t& sock,
 }
 
 
-remote_identity_t recv_server(zmq::socket_t& server_socket,
-                              zmq::multipart_t& mmsg)
+remote_identity_t generaldomo::recv_server(zmq::socket_t& server_socket,
+                                           zmq::multipart_t& mmsg)
 {
     zmq::message_t msg;
     auto res = server_socket.recv(msg, zmq::recv_flags::none);
     uint32_t routing_id = msg.routing_id();
+    remote_identity_t rid;
+    rid.push_back((0xff000000&routing_id) >> 24);
+    rid.push_back((0x00ff0000&routing_id) >> 16);
+    rid.push_back((0x0000ff00&routing_id) >> 8);
+    rid.push_back((0x000000ff&routing_id));
+
+
     mmsg.decode(msg);
-    return remote_identity_t((char*)&routing_id, 4);
+    {
+        std::stringstream ss;
+        ss << "recv SERVER msg size " << msg.size()
+           << ", " << mmsg.size() << " parts \"" << rid << "\""
+           << " " << (void*)routing_id 
+           << " '" << (int)rid[0] << "'"
+           << " '" << (int)rid[1] << "'"
+           << " '" << (int)rid[2] << "'"
+           << " '" << (int)rid[3] << "'";
+        console_log log;
+        log.debug(ss.str());
+    }
+    return rid;
 }
 
-remote_identity_t recv_router(zmq::socket_t& router_socket,
-                              zmq::multipart_t& mmsg)
+remote_identity_t generaldomo::recv_router(zmq::socket_t& router_socket,
+                                           zmq::multipart_t& mmsg)
 {
     mmsg.recv(router_socket);
     remote_identity_t rid = mmsg.popstr();
@@ -40,8 +60,8 @@ remote_identity_t recv_router(zmq::socket_t& router_socket,
 }
 
 
-void send_serverish(zmq::socket_t& sock,
-                    zmq::multipart_t& mmsg, remote_identity_t rid)
+void generaldomo::send_serverish(zmq::socket_t& sock,
+                                 zmq::multipart_t& mmsg, remote_identity_t rid)
 {
     int stype = sock.getsockopt<int>(ZMQ_TYPE);
     if (ZMQ_SERVER == stype) {
@@ -53,18 +73,33 @@ void send_serverish(zmq::socket_t& sock,
     throw std::runtime_error("send requires SERVER or ROUTER socket");
 }
 
-void send_server(zmq::socket_t& server_socket,
-                 zmq::multipart_t& mmsg, remote_identity_t rid)
+void generaldomo::send_server(zmq::socket_t& server_socket,
+                              zmq::multipart_t& mmsg, remote_identity_t rid)
 {
     zmq::message_t msg = mmsg.encode();
-    const char* d = rid.data();
-    uint32_t routing_id = d[0] << 24 | d[1] << 16 | d[2] << 8 | d[3];
+    uint32_t routing_id =
+        0xff000000&(rid[0] << 24) |
+        0x00ff0000&(rid[1] << 16) |
+        0x0000ff00&(rid[2] << 8) |
+        0x000000ff&rid[3];
     msg.set_routing_id(routing_id);
+    {
+        std::stringstream ss;
+        ss << "send SERVER msg size " << msg.size()
+           << ", " << mmsg.size() << " parts \"" << rid << "\""
+           << " " << (void*)routing_id 
+           << " '" << (int)rid[0] << "'"
+           << " '" << (int)rid[1] << "'"
+           << " '" << (int)rid[2] << "'"
+           << " '" << (int)rid[3] << "'";
+        console_log log;
+        log.debug(ss.str());
+    }
     server_socket.send(msg, zmq::send_flags::none);
 }
 
-void send_router(zmq::socket_t& router_socket,
-                 zmq::multipart_t& mmsg, remote_identity_t rid)
+void generaldomo::send_router(zmq::socket_t& router_socket,
+                              zmq::multipart_t& mmsg, remote_identity_t rid)
 {
     mmsg.pushmem(NULL, 0);
     mmsg.pushstr(rid);
@@ -72,8 +107,8 @@ void send_router(zmq::socket_t& router_socket,
 }
 
 
-void recv_clientish(zmq::socket_t& socket,
-                    zmq::multipart_t& mmsg)
+void generaldomo::recv_clientish(zmq::socket_t& socket,
+                                 zmq::multipart_t& mmsg)
 {
     int stype = socket.getsockopt<int>(ZMQ_TYPE);
     if (ZMQ_CLIENT == stype) {
@@ -87,18 +122,25 @@ void recv_clientish(zmq::socket_t& socket,
     throw std::runtime_error("recv requires CLIENT or DEALER socket");
 }
 
-void recv_client(zmq::socket_t& client_socket,
-                 zmq::multipart_t& mmsg)
+void generaldomo::recv_client(zmq::socket_t& client_socket,
+                              zmq::multipart_t& mmsg)
 {
     zmq::message_t msg;
     auto res = client_socket.recv(msg, zmq::recv_flags::none);
     mmsg.decode(msg);
+    {
+        std::stringstream ss;
+        ss << "recv CLIENT msg size " << msg.size()
+           << ", " << mmsg.size() << " parts";
+        console_log log;
+        log.debug(ss.str());
+    }
     return;
 }
 
 
-void recv_dealer(zmq::socket_t& dealer_socket,
-                 zmq::multipart_t& mmsg)
+void generaldomo::recv_dealer(zmq::socket_t& dealer_socket,
+                              zmq::multipart_t& mmsg)
 {
     mmsg.recv(dealer_socket);
     mmsg.pop();                 // fake being REQ
@@ -106,8 +148,8 @@ void recv_dealer(zmq::socket_t& dealer_socket,
 }
     
 
-void send_clientish(zmq::socket_t& socket,
-                    zmq::multipart_t& mmsg)
+void generaldomo::send_clientish(zmq::socket_t& socket,
+                                 zmq::multipart_t& mmsg)
 {
     int stype = socket.getsockopt<int>(ZMQ_TYPE);
     if (ZMQ_CLIENT == stype) {
@@ -121,15 +163,22 @@ void send_clientish(zmq::socket_t& socket,
     throw std::runtime_error("send requires CLIENT or DEALER socket");
 }
 
-void send_client(zmq::socket_t& client_socket,
-                 zmq::multipart_t& mmsg)
+void generaldomo::send_client(zmq::socket_t& client_socket,
+                              zmq::multipart_t& mmsg)
 {
     zmq::message_t msg = mmsg.encode();
+    {
+        std::stringstream ss;
+        ss << "send CLIENT msg size " << msg.size()
+           << ", " << mmsg.size() << " parts";
+        console_log log;
+        log.debug(ss.str());
+    }
     client_socket.send(msg, zmq::send_flags::none);
 }
 
-void send_dealer(zmq::socket_t& dealer_socket,
-                 zmq::multipart_t& mmsg)
+void generaldomo::send_dealer(zmq::socket_t& dealer_socket,
+                              zmq::multipart_t& mmsg)
 {
     mmsg.pushmem(NULL,0);       // pretend to be REQ
     mmsg.send(dealer_socket);
@@ -138,28 +187,29 @@ void send_dealer(zmq::socket_t& dealer_socket,
 
 
 
-std::chrono::milliseconds now_ms()
+std::chrono::milliseconds generaldomo::now_ms()
 {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 }
 
-void sleep_ms(std::chrono::milliseconds zzz)
+void generaldomo::sleep_ms(std::chrono::milliseconds zzz)
 {
     std::this_thread::sleep_for(zzz);
 }
 
 static int s_interrupted = 0;
+static
 void s_signal_handler (int signal_value)
 {
     s_interrupted = 1;
 }
-bool interrupted() 
+bool generaldomo::interrupted() 
 {
     return s_interrupted==1; 
 }
 
 // Call from main()
-void catch_signals ()
+void generaldomo::catch_signals ()
 {
     struct sigaction action;
     action.sa_handler = s_signal_handler;

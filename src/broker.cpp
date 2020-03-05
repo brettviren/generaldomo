@@ -5,6 +5,7 @@
 #include "generaldomo/broker.hpp"
 #include "generaldomo/util.hpp"
 #include "generaldomo/protocol.hpp"
+#include <sstream>
 
 using namespace generaldomo;
 
@@ -21,11 +22,13 @@ Broker::Broker(zmq::socket_t& sock, logbase_t& log)
     if (ZMQ_SERVER == stype) {
         recv = recv_server;
         send = send_server;
+        m_log.info("generaldomo broker with SERVER starting");
         return;
     }
     if(ZMQ_ROUTER == stype) {
         recv = recv_router;
         send = send_router;
+        m_log.info("generaldomo broker with ROUTER starting");
         return;
     }
     throw std::runtime_error("generaldomo::Broker requires SERVER or ROUTER socket");
@@ -50,13 +53,15 @@ void Broker::proc_one()
     remote_identity_t sender = recv(m_sock, mmsg);
     std::string header = mmsg.popstr(); // 7/MDP frame 1
     if (header == mdp::client::ident) {
+        m_log.debug("generaldomo broker process client");
         client_process(sender, mmsg);
     }
     else if (header == mdp::worker::ident) {
+        m_log.debug("generaldomo broker process worker");
         worker_process(sender, mmsg);
     }
     else {
-        m_log.error("invalid message from " + sender);
+        m_log.error("generaldomo broker invalid message from " + sender);
     }
 }
 
@@ -68,6 +73,7 @@ void Broker::proc_heartbeat(time_unit_t heartbeat_at)
     }
     purge_workers();
     for (auto& wrk : m_waiting) {
+        m_log.debug("generaldomo broker heartbeat to worker");
         zmq::multipart_t mmsg;
         mmsg.pushstr(mdp::worker::heartbeat);
         mmsg.pushstr(mdp::worker::ident);
@@ -111,7 +117,7 @@ void Broker::purge_workers()
         }
     }
     for (auto wrk : dead) {
-        m_log.debug("deleting expired worker: " + wrk->identity);
+        m_log.debug("generaldomo broker deleting expired worker: " + wrk->identity);
         worker_delete(wrk,0);   // operates on m_waiting set
     }
 }
@@ -122,7 +128,7 @@ Broker::Service* Broker::service_require(std::string name)
     if (!srv) {
         srv = new Service{name};
         m_services[name] = srv;
-        m_log.debug("registering new service: " + name);
+        m_log.debug("generaldomo broker registering new service: " + name);
     }
     return srv;
 }
@@ -162,8 +168,7 @@ void Broker::service_dispatch(Service* srv)
         }
             
         zmq::multipart_t& mmsg = srv->requests.front();
-        mmsg.pushstr(mdp::worker::request);
-        mmsg.pushstr(mdp::worker::ident);
+        m_log.debug("generaldomo broker send work");        
         send(m_sock, mmsg, (*wrk_it)->identity);
         srv->requests.pop_front();
         m_waiting.erase(*wrk_it);
@@ -178,7 +183,7 @@ Broker::Worker* Broker::worker_require(remote_identity_t identity)
     if (!wrk) {
         wrk = new Worker{identity};
         m_workers[identity] = wrk;
-        m_log.debug("registering new worker");
+        m_log.debug("generaldomo broker registering new worker");
     }
     return wrk;
 }
@@ -189,6 +194,7 @@ void Broker::worker_delete(Broker::Worker*& wrk, int disconnect)
         zmq::multipart_t mmsg;
         mmsg.pushstr(mdp::worker::disconnect);
         mmsg.pushstr(mdp::worker::ident);
+        m_log.debug("generaldomo broker disconnect worker");
         send(m_sock, mmsg, wrk->identity);
     }
     if (wrk->service) {
@@ -218,12 +224,12 @@ void Broker::worker_process(remote_identity_t sender, zmq::multipart_t& mmsg)
 
     if (mdp::worker::ready == command) {
         if (worker_ready) {     // protocol error
-            m_log.error("protocol error (double ready) from: " + sender);
+            m_log.error("generaldomo broker protocol error (double ready) from: " + sender);
             worker_delete(wrk, 1);
             return;
         }
         if (sender.size() >= 4 && sender.find_first_of("mmi.") == 0) {
-            m_log.error("protocol error (worker mmi) from: " + sender);
+            m_log.error("generaldomo broker protocol error (worker mmi) from: " + sender);
             worker_delete(wrk, 1);
             return;
         }
@@ -240,9 +246,10 @@ void Broker::worker_process(remote_identity_t sender, zmq::multipart_t& mmsg)
             return;
         }
         remote_identity_t client_id = mmsg.popstr();
-        // mmsg now at Frame 4, empty address (envelope stack)
+        mmsg.pop();
         mmsg.pushstr(wrk->service->name);
         mmsg.pushstr(mdp::client::ident);
+        m_log.debug("generaldomo broker reply to client");
         send(m_sock, mmsg, client_id);
         worker_waiting(wrk);
         return;
@@ -259,7 +266,7 @@ void Broker::worker_process(remote_identity_t sender, zmq::multipart_t& mmsg)
         worker_delete(wrk, 0);
         return;
     }
-    m_log.error("invalid input message " + command);
+    m_log.error("generaldomo broker invalid input message " + command);
 }
 
 
@@ -280,7 +287,10 @@ void Broker::client_process(remote_identity_t client_id, zmq::multipart_t& mmsg)
         service_internal(client_id, service_name, mmsg);
     }
     else {
-        mmsg.pushstr(client_id); // Worker REQUEST Frame 3
+        mmsg.pushmem(NULL,0);               // frame 4
+        mmsg.pushstr(client_id);            // frame 3
+        mmsg.pushstr(mdp::worker::request); // frame 2
+        mmsg.pushstr(mdp::worker::ident);   // frame 1
         srv->requests.emplace_back(std::move(mmsg));
         service_dispatch(srv);
     }
@@ -289,8 +299,65 @@ void Broker::client_process(remote_identity_t client_id, zmq::multipart_t& mmsg)
 
 // An actor function running a Broker.
 
-void generaldomo::broker_actor(zmq::socket_t& pipe, int socktype)
+
+void generaldomo::broker_actor(zmq::socket_t& pipe, std::string address, int socktype)
 {
-    assert(false);
+    console_log log;
+
+    zmq::context_t ctx;
+    zmq::socket_t sock(ctx, socktype);
+    sock.bind(address);
+
+    Broker broker(sock, log);
+    pipe.send(zmq::message_t{}, zmq::send_flags::none);
+
+    // basically the guts of start() but we also poll on pipe as well as sock
+
+    time_unit_t now = now_ms();
+    time_unit_t hb_interval{HEARTBEAT_INTERVAL};
+    time_unit_t heartbeat_at = now + hb_interval;
+
+    zmq::poller_t<> poller;
+    poller.add(pipe, zmq::event_flags::pollin);
+    poller.add(sock, zmq::event_flags::pollin);
+
+    while (! interrupted()) {
+        time_unit_t timeout{0};
+        if (heartbeat_at > now ) {
+            timeout = heartbeat_at - now;
+        }
+
+        log.debug("broker actor wait");
+        std::vector< zmq::poller_event<> > events(2);
+        int nevents = poller.wait_all(events, timeout);
+        for (int iev=0; iev < nevents; ++iev) {
+
+            if (events[iev].socket == sock) {
+                log.debug("broker actor sock hit");
+                broker.proc_one();
+            }
+
+            if (events[iev].socket == pipe) {
+                log.debug("broker actor pipe hit");
+                zmq::message_t msg;
+                auto res = events[0].socket.recv(msg, zmq::recv_flags::dontwait);
+                assert(res);
+                std::stringstream ss;
+                ss << "msg: " << msg.size();
+                log.debug("broker actor pipe " + ss.str());
+                return;         // terminated
+            }
+        }
+        if (!nevents) {
+            log.debug("broker actor timeout");
+        }
+        broker.proc_heartbeat(heartbeat_at);
+
+        heartbeat_at += hb_interval;
+        now = now_ms();
+    }
+
+    zmq::message_t die;
+    auto res = pipe.recv(die);
 }
 

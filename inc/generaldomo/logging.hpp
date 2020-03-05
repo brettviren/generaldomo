@@ -13,14 +13,14 @@ namespace generaldomo {
     };
     struct console_log : public logbase_t  {
         enum class log_level : int {
-            debug=1, info=2, error=3
+            always=0, debug=1, info=2, error=3
         };
-        log_level level{2};
+        log_level level{log_level::debug};
         virtual ~console_log();
         virtual void debug(const std::string& msg);
         virtual void info(const std::string& msg);
         virtual void error(const std::string& msg);
-        virtual void always(const std::string& msg);
+        virtual void always(const std::string& msg, char lvl = 'A');
     };
 
 }

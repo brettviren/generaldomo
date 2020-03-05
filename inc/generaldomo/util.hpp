@@ -54,16 +54,16 @@ namespace generaldomo {
 
 
     // Receive on a DEALER or CLIENT
-    remote_identity_t recv_clientish(zmq::socket_t& socket,
-                                     zmq::multipart_t& mmsg);
+    void recv_clientish(zmq::socket_t& socket,
+                        zmq::multipart_t& mmsg);
 
     // Receive on a CLIENT
-    remote_identity_t recv_client(zmq::socket_t& client_socket,
-                                  zmq::multipart_t& mmsg);
+    void recv_client(zmq::socket_t& client_socket,
+                     zmq::multipart_t& mmsg);
 
     // Receive on a DEALER
-    remote_identity_t recv_dealer(zmq::socket_t& dealer_socket,
-                                  zmq::multipart_t& mmsg);
+    void  recv_dealer(zmq::socket_t& dealer_socket,
+                      zmq::multipart_t& mmsg);
     
 
     // Send on a DEALER or CLIENT

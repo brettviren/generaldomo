@@ -30,8 +30,24 @@ namespace generaldomo {
 
         /// Send reply from last request, if any, and get new request.
         /// Both reply and request multiparts begin with "Frames 5+
-        /// request body" of 7/MDP.
+        /// request body" of 7/MDP.  This will only return when there
+        /// is a request.  It will internally allow a timeout and a
+        /// reconnect to the broker.  If owner of the Worker needs to
+        /// get time to do other things while waiting for a request
+        /// then send() and recv() may be used.
         zmq::multipart_t work(zmq::multipart_t& reply);
+
+        /// Recieve a request.  Note, if no request is pending, this
+        /// will wait for at most one heartbeat and return leaving the
+        /// request empty.  If the request is not empty a subsequent
+        /// send() shall be made.        
+        void recv(zmq::multipart_t& request);
+        /// Send a reply.  A reply must only be sent in response to a
+        /// request.  Note, unlike using work() it is not required,
+        /// but still allowed, to send an initial empty reply.
+        /// Empties will simply be ignored.
+        void send(zmq::multipart_t& reply);
+
 
     private:
         zmq::socket_t& m_sock;
@@ -48,9 +64,9 @@ namespace generaldomo {
     private:
 
         std::function<void(zmq::socket_t& server_socket,
-                           zmq::multipart_t& mmsg)> recv;
+                           zmq::multipart_t& mmsg)> really_recv;
         std::function<void(zmq::socket_t& server_socket,
-                           zmq::multipart_t& mmsg)> send;
+                           zmq::multipart_t& mmsg)> really_send;
 
         void connect_to_broker(bool reconnect = true);
 

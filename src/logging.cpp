@@ -1,35 +1,38 @@
+// fixme: this is a garbage place holder for something like spdlog.
+
 #include "generaldomo/logging.hpp"
 #include <cstdio>
+#include <sstream>
 
 using namespace generaldomo;
+
+console_log::~console_log() {}
 
 
 void console_log::debug(const std::string& msg)
 {
     if (level > log_level::debug) { return; }
-    always(msg);
+    always(msg,'D');
 }
 
 void console_log::info(const std::string& msg)
 {
     if (level > log_level::info) { return; }
-    always(msg);
+    always(msg,'I');
 }
-
 
 void console_log::error(const std::string& msg)
 {
     if (level > log_level::error) { return; }
-    always(msg);
+    always(msg,'E');
 }
 
-void console_log::always(const std::string& msg)
+void console_log::always(const std::string& msg, char lvl)
 {
     time_t curtime = time (NULL);
     struct tm *loctime = localtime (&curtime);
     char formatted[20] = {0};
     strftime (formatted, 20, "%y-%m-%d %H:%M:%S ", loctime);
     printf ("%s", formatted);
-    const char* code=" DIE";
-    printf("%c: %s", code[(int)level], msg.c_str());
+    printf("%c: %s\n", lvl, msg.c_str());
 }

@@ -61,9 +61,8 @@ namespace generaldomo {
             // Service name, that is the "thing" that its workers know how to do.
             std::string name;
 
-            // List of client requests for this service.  These need
-            // to be multipart_t which are not available as pointer!
-            // How to store effciently to avoid copy? FIXME
+            // List of client requests for this service.  Each holds a
+            // full 7/MDP message starting with Frame 1.
             std::deque<zmq::multipart_t> requests;
 
             // List of waiting workers.
@@ -118,7 +117,7 @@ namespace generaldomo {
      * - (BIND, address) :: bind broker socket to address
      * - (START) :: enter main brokering loop
      */
-    void broker_actor(zmq::socket_t& pipe, int socktype);
+    void broker_actor(zmq::socket_t& pipe, std::string address, int socktype);
 
 
 }

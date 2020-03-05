@@ -46,7 +46,7 @@ void Client::send(std::string service, zmq::multipart_t& request)
 {
     request.pushstr(service);            // frame 2
     request.pushstr(mdp::client::ident); // frame 1
-    m_log.debug("send request for " + service);
+    m_log.debug("client send request for " + service);
     really_send(m_sock, request);
 }
 
@@ -68,13 +68,13 @@ void Client::recv(zmq::multipart_t& reply)
             
         std::string service = mmsg.popstr();
         reply = std::move(mmsg);
-        return;
+        return;                 // success
     }
     if ( interrupted() ) {
         m_log.error("client interupted on recv");
     }
     else {
-        m_log.error("client unknown error");
+        m_log.error("client timeout");
     }
     reply.clear();
     return;

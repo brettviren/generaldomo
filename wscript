@@ -16,7 +16,7 @@ def options(opt):
     pass
 
 def configure(cfg):
-    cfg.env.CXXFLAGS += ['-std=c++17', '-g', '-O2']
+    cfg.env.CXXFLAGS += ['-std=c++17', '-g', '-O2', '-DZMQ_BUILD_DRAFT_API']
     cfg.load('compiler_cxx')
     cfg.load('waf_unit_test')
     p = dict(mandatory=True, args='--cflags --libs')
@@ -50,6 +50,7 @@ def rpathify(bld, uses):
     
 
 def build(bld):
+    #print bld.env
     uses = bld.env['USES_LIB']
     rpath = bld.rpathify(uses)
 
@@ -102,7 +103,7 @@ def build(bld):
                     install_path = None,
                     includes = ['inc','build','test'],
                     rpath = rpath,
-                    use = uses)
+                    use = [APPNAME] + uses)
 
     from waflib.Tools import waf_unit_test
     bld.add_post_fun(waf_unit_test.summary)

@@ -11,14 +11,15 @@ Worker::Worker(zmq::socket_t& sock, std::string broker_address,
     , m_service(service)
     , m_log(log)
 {
+    m_log.debug("worker constructing on " + m_address);
     int stype = m_sock.getsockopt<int>(ZMQ_TYPE);
     if (ZMQ_CLIENT == stype) {
-        recv = recv_client;
-        send = send_client;
+        really_recv = recv_client;
+        really_send = send_client;
     }
     else if (ZMQ_DEALER == stype) {
-        recv = recv_dealer;
-        send = send_dealer;
+        really_recv = recv_dealer;
+        really_send = send_dealer;
     }
     else {
         throw std::runtime_error("worker must be given DEALER or CLIENT socket");
@@ -27,11 +28,16 @@ Worker::Worker(zmq::socket_t& sock, std::string broker_address,
     connect_to_broker(false);
 }
 
-Worker::~Worker() { }
+Worker::~Worker()
+{
+    m_log.debug("worker destructing");
+    m_sock.disconnect(m_address);
+}
 
 void Worker::connect_to_broker(bool reconnect)
 {
     if (reconnect) {
+        m_log.debug("worker disconnect from " + m_address);
         m_sock.disconnect(m_address);
     }
 
@@ -45,78 +51,95 @@ void Worker::connect_to_broker(bool reconnect)
     mmsg.pushstr(m_service);          // 3
     mmsg.pushstr(mdp::worker::ready); // 2
     mmsg.pushstr(mdp::worker::ident); // 1
-    send(m_sock, mmsg);
+    really_send(m_sock, mmsg);
 
     m_liveness = HEARTBEAT_LIVENESS;
     m_heartbeat_at = now_ms() + m_heartbeat;
 }
 
-zmq::multipart_t Worker::work(zmq::multipart_t& reply)
+void Worker::send(zmq::multipart_t& reply)
 {
-    if (reply.size()) {
-        reply.pushmem(NULL,0);             // 4
-        reply.pushstr(m_reply_to);         // 3
-        reply.pushstr(mdp::worker::reply); // 2
-        reply.pushstr(mdp::worker::ident); // 1
-        send(m_sock, reply);
+    if (reply.empty()) {
+        return;
     }
+    reply.pushmem(NULL,0);             // 4
+    reply.pushstr(m_reply_to);         // 3
+    reply.pushstr(mdp::worker::reply); // 2
+    reply.pushstr(mdp::worker::ident); // 1
+    really_send(m_sock, reply);
+}
 
+void Worker::recv(zmq::multipart_t& request)
+{
     zmq::poller_t<> poller;
     poller.add(m_sock, zmq::event_flags::pollin);
-    while (! interrupted()) {
-        
-        std::vector< zmq::poller_event<> > events(1);
-        int rc = poller.wait_all(events, m_heartbeat);
-        if (rc > 0) {           // got one
-            zmq::multipart_t mmsg;
-            recv(m_sock, mmsg);
-            m_liveness = HEARTBEAT_LIVENESS;
-            std::string header = mmsg.popstr();  // 1
-            assert(header == mdp::worker::ident);
-            std::string command = mmsg.popstr(); // 2
-            if (mdp::worker::request == command) {
-                m_reply_to = mmsg.popstr(); // 3
-                mmsg.pop();                 // 4
-                return mmsg;                // 5+
-            }
-            else if (mdp::worker::heartbeat == command) {
-                // nothing
-            }
-            else if (mdp::worker::disconnect == command) {
-                connect_to_broker();
-            }
-            else {
-                m_log.error("invalid worker command: " + command);
-            }
+
+    std::vector< zmq::poller_event<> > events(1);
+    int rc = poller.wait_all(events, m_heartbeat);
+    if (rc > 0) {           // got one
+        zmq::multipart_t mmsg;
+        really_recv(m_sock, mmsg);
+        m_liveness = HEARTBEAT_LIVENESS;
+        std::string header = mmsg.popstr();  // 1
+        assert(header == mdp::worker::ident);
+        std::string command = mmsg.popstr(); // 2
+        if (mdp::worker::request == command) {
+            m_reply_to = mmsg.popstr(); // 3
+            mmsg.pop();                 // 4
+            request = std::move(mmsg);  // 5+
+            return;                
         }
-        else {                  // timeout
-            --m_liveness;
-            if (m_liveness == 0) {
-                m_log.debug("disconnect from broker - retrying...");
-            }
-            sleep_ms(m_reconnect);
+        else if (mdp::worker::heartbeat == command) {
+            // nothing
+        }
+        else if (mdp::worker::disconnect == command) {
             connect_to_broker();
         }
-        if (now_ms() >= m_heartbeat_at) {
-            zmq::multipart_t mmsg;
-            mmsg.pushstr(mdp::worker::heartbeat); // 2
-            mmsg.pushstr(mdp::worker::ident);     // 1
-            send(m_sock, mmsg);
-            m_heartbeat_at += m_heartbeat;
+        else {
+            m_log.error("worker invalid command: " + command);
         }
     }
+    else {                  // timeout
+        --m_liveness;
+        if (m_liveness == 0) {
+            m_log.debug("worker disconnect from broker - retrying...");
+        }
+        sleep_ms(m_reconnect);
+        connect_to_broker();
+    }
+    if (now_ms() >= m_heartbeat_at) {
+        zmq::multipart_t mmsg;
+        mmsg.pushstr(mdp::worker::heartbeat); // 2
+        mmsg.pushstr(mdp::worker::ident);     // 1
+        really_send(m_sock, mmsg);
+        m_heartbeat_at += m_heartbeat;
+    }
+
+    return;
+}
+
+zmq::multipart_t Worker::work(zmq::multipart_t& reply)
+{
+    send(reply);
+
+    while (! interrupted() ) {
+        zmq::multipart_t request;
+        recv(request);
+        if (request.empty()) {
+            continue;
+        }
+        return request;
+    }
     if (interrupted()) {
-        m_log.info("interupt received, killing worker");
+        m_log.info("worker interupt received, killing worker");
     }
     
     return zmq::multipart_t{};
 }
 
 
-void echo_worker(zmq::socket_t& pipe, std::string address, int socktype)
+void generaldomo::echo_worker(zmq::socket_t& pipe, std::string address, int socktype)
 {
-    pipe.send(zmq::message_t{}, zmq::send_flags::none);
-
     // fixme: should get this from a more global spot.
     console_log log;
 
@@ -124,16 +147,49 @@ void echo_worker(zmq::socket_t& pipe, std::string address, int socktype)
     zmq::context_t ctx;
     zmq::socket_t sock(ctx, socktype);
     Worker worker(sock, address, "echo", log);
+    log.debug("worker echo created on " + address);
 
+    zmq::poller_t<> poller;
+    poller.add(pipe, zmq::event_flags::pollin);
+    poller.add(sock, zmq::event_flags::pollin);
+
+    // we want to get back to our main loop often enough to check for
+    // our creator to issue a termination (pipe hit) but not so fast
+    // that the loop spins and wastes CPU.
+    time_unit_t poll_resolution{500};
+
+    pipe.send(zmq::message_t{}, zmq::send_flags::none); // ready
+
+    log.debug("worker echo starting");
     zmq::multipart_t reply;
-    while (true) {
-        zmq::multipart_t request = worker.work(reply);
-        if (request.size()) {
-            break;
+    while ( ! interrupted() ) {
+
+        log.debug("worker check pipe");
+        std::vector< zmq::poller_event<> > events(2);
+        int nevents = poller.wait_all(events, poll_resolution);
+        for (int iev=0; iev < nevents; ++iev) {
+
+            if (events[iev].socket == pipe) {
+                log.debug("worker pipe hit");
+                return;
+            }
+
+            if (events[iev].socket == sock) {
+                log.debug("worker echo work");
+                zmq::multipart_t request;
+                worker.recv(request);
+                if (request.empty()) {
+                    log.debug("worker echo got null request");
+                    break;
+                }
+                reply = std::move(request);
+                worker.send(reply);
+            }
         }
-        reply = std::move(request);
     }
     // fixme: should poll on pipe to check for early shutdown
+    log.debug("worker echo wait for term");    
     zmq::message_t die;
     auto res = pipe.recv(die, zmq::recv_flags::none);
+    log.debug("worker echo wait for exit");    
 }
