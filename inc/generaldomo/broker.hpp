@@ -13,40 +13,24 @@
 
 namespace generaldomo {
 
-    /*! The generaldomo broker actor.
-     *
-     * The broker is in the form of a function intended to be called
-     * from a zmq::actor_t.
-     *
-     * The address should be in the usual ZeroMQ format.  The borker
-     * will bind() to it.
-     * 
-     * The socktype should be either SERVER or ROUTER.
-     * If ROUTER, the broker will act as a 7/MDP v0.1 broker.
-     * Else it will act as a GDP broker.
-     */
-    void broker_actor(zmq::socket_t& pipe, std::string address, int socktype);
-
 
     /*! The generaldomo broker class */
 
     class Broker {
     public:
 
-        /// Create a broker with a ROUTER or SERVER socket 
-        Broker(zmq::socket_t&& sock, logbase_t& log);
+        /// Create a broker with a ROUTER or SERVER socket already
+        /// bound.  Caller must keep socket, eg to mix with others in
+        /// an actor's poller.
+        Broker(zmq::socket_t& sock, logbase_t& log);
         ~Broker();
 
-        /// Bind the socket to the address
-        void bind(std::string address);
-
-        /// Begin brokering (main loop)
+        /// Begin brokering (run forever).  The guts of this method
+        /// need to be reimplemented if proc_*() are called instead.
         void start();
 
         /// Process one input on socket
         void proc_one();
-
-        typedef std::chrono::milliseconds time_unit_t;
 
         /// Do heartbeat processing given next heatbeat time. 
         void proc_heartbeat(time_unit_t heartbeat_at);
@@ -91,7 +75,6 @@ namespace generaldomo {
             ~Service ();
         };
 
-
     private:
         void purge_workers();
         Service* service_require(std::string name);
@@ -109,13 +92,33 @@ namespace generaldomo {
 
     private:
 
-        zmq::socket_t m_sock;
+        zmq::socket_t& m_sock;
         logbase_t& m_log;
+
+        // fixme: make configurable
+        time_unit_t m_hb_interval{HEARTBEAT_INTERVAL};
+        time_unit_t m_hb_expiry{HEARTBEAT_EXPIRY};
+
         std::unordered_map<remote_identity_t, Service*> m_services;
         std::unordered_map<remote_identity_t, Worker*> m_workers;
         std::unordered_set<Worker*> m_waiting;
     };
 
+
+    /*! The launch and forget generaldomo broker actor function.
+     *
+     * The broker is in the form of a function intended to be called
+     * from a zmq::actor_t.
+     *
+     * The socktype should be either SERVER or ROUTER.
+     * If ROUTER, the broker will act as a 7/MDP v0.1 broker.
+     * Else it will act as a GDP broker.
+     *
+     * The actor protocol supports the commands:
+     * - (BIND, address) :: bind broker socket to address
+     * - (START) :: enter main brokering loop
+     */
+    void broker_actor(zmq::socket_t& pipe, int socktype);
 
 
 }

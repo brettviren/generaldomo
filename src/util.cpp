@@ -1,5 +1,6 @@
 #include "generaldomo/util.hpp"
 #include <chrono>
+#include <thread>
 #include <signal.h>
 
 using namespace generaldomo;
@@ -15,7 +16,7 @@ remote_identity_t recv_serverish(zmq::socket_t& sock,
     if(ZMQ_ROUTER == stype) {
         return recv_router(sock, mmsg);
     }
-    throw std::runtime_error("requires SERVER or ROUTER socket");
+    throw std::runtime_error("recv requires SERVER or ROUTER socket");
 }
 
 
@@ -49,7 +50,7 @@ void send_serverish(zmq::socket_t& sock,
     if(ZMQ_ROUTER == stype) {
         return send_router(sock, mmsg, rid);
     }
-    throw std::runtime_error("requires SERVER or ROUTER socket");
+    throw std::runtime_error("send requires SERVER or ROUTER socket");
 }
 
 void send_server(zmq::socket_t& server_socket,
@@ -71,13 +72,81 @@ void send_router(zmq::socket_t& router_socket,
 }
 
 
+void recv_clientish(zmq::socket_t& socket,
+                    zmq::multipart_t& mmsg)
+{
+    int stype = socket.getsockopt<int>(ZMQ_TYPE);
+    if (ZMQ_CLIENT == stype) {
+        recv_client(socket, mmsg);
+        return;
+    }
+    if(ZMQ_DEALER == stype) {
+        recv_dealer(socket, mmsg);
+        return;
+    }
+    throw std::runtime_error("recv requires CLIENT or DEALER socket");
+}
+
+void recv_client(zmq::socket_t& client_socket,
+                 zmq::multipart_t& mmsg)
+{
+    zmq::message_t msg;
+    auto res = client_socket.recv(msg, zmq::recv_flags::none);
+    mmsg.decode(msg);
+    return;
+}
+
+
+void recv_dealer(zmq::socket_t& dealer_socket,
+                 zmq::multipart_t& mmsg)
+{
+    mmsg.recv(dealer_socket);
+    mmsg.pop();                 // fake being REQ
+    return;
+}
+    
+
+void send_clientish(zmq::socket_t& socket,
+                    zmq::multipart_t& mmsg)
+{
+    int stype = socket.getsockopt<int>(ZMQ_TYPE);
+    if (ZMQ_CLIENT == stype) {
+        send_client(socket, mmsg);
+        return;
+    }
+    if(ZMQ_DEALER == stype) {
+        send_dealer(socket, mmsg);
+        return;
+    }
+    throw std::runtime_error("send requires CLIENT or DEALER socket");
+}
+
+void send_client(zmq::socket_t& client_socket,
+                 zmq::multipart_t& mmsg)
+{
+    zmq::message_t msg = mmsg.encode();
+    client_socket.send(msg, zmq::send_flags::none);
+}
+
+void send_dealer(zmq::socket_t& dealer_socket,
+                 zmq::multipart_t& mmsg)
+{
+    mmsg.pushmem(NULL,0);       // pretend to be REQ
+    mmsg.send(dealer_socket);
+}
+
+
+
 
 std::chrono::milliseconds now_ms()
 {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 }
 
-
+void sleep_ms(std::chrono::milliseconds zzz)
+{
+    std::this_thread::sleep_for(zzz);
+}
 
 static int s_interrupted = 0;
 void s_signal_handler (int signal_value)

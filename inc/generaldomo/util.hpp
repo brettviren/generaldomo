@@ -7,6 +7,14 @@
 
 namespace generaldomo {
 
+    // timeouts, heartbeats and other things are in units of millisecond.
+    typedef std::chrono::milliseconds time_unit_t;
+    
+    // default values
+    const int HEARTBEAT_LIVENESS = 3;
+    const time_unit_t HEARTBEAT_INTERVAL{2500};
+    const time_unit_t HEARTBEAT_EXPIRY{HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS};
+
 
     // Erase the difference between SERVER routing ID and ROUTER
     // envelop stack.  The former is uint32_t which we stuff in to a
@@ -45,9 +53,37 @@ namespace generaldomo {
                      remote_identity_t rid);
 
 
+    // Receive on a DEALER or CLIENT
+    remote_identity_t recv_clientish(zmq::socket_t& socket,
+                                     zmq::multipart_t& mmsg);
+
+    // Receive on a CLIENT
+    remote_identity_t recv_client(zmq::socket_t& client_socket,
+                                  zmq::multipart_t& mmsg);
+
+    // Receive on a DEALER
+    remote_identity_t recv_dealer(zmq::socket_t& dealer_socket,
+                                  zmq::multipart_t& mmsg);
+    
+
+    // Send on a DEALER or CLIENT
+    void send_clientish(zmq::socket_t& socket,
+                        zmq::multipart_t& mmsg);
+
+    // Send on a CLIENT
+    void send_client(zmq::socket_t& client_socket,
+                     zmq::multipart_t& mmsg);
+
+    // Send on a DEALER
+    void send_dealer(zmq::socket_t& dealer_socket,
+                     zmq::multipart_t& mmsg);
+
+
     /*! Current system time in milliseconds. */
     std::chrono::milliseconds now_ms();
 
+    /*! Sleep a while */
+    void sleep_ms(std::chrono::milliseconds zzz);
 
     /*! Return true when a signal has been sent to the application.
      *

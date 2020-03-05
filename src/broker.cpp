@@ -9,22 +9,15 @@
 using namespace generaldomo;
 
 
-
-// fixme: make these configurable
-#define HEARTBEAT_LIVENESS  3       //  3-5 is reasonable
-const Broker::time_unit_t HEARTBEAT_INTERVAL{2500};
-const Broker::time_unit_t HEARTBEAT_EXPIRY{HEARTBEAT_INTERVAL * HEARTBEAT_LIVENESS};
-
-
 Broker::Service::~Service () {
 }
 
 
-Broker::Broker(zmq::socket_t&& sock, logbase_t& log)
-    : m_sock(std::move(sock))
+Broker::Broker(zmq::socket_t& sock, logbase_t& log)
+    : m_sock(sock)
     , m_log(log)
 {
-    int stype = sock.getsockopt<int>(ZMQ_TYPE);
+    int stype = m_sock.getsockopt<int>(ZMQ_TYPE);
     if (ZMQ_SERVER == stype) {
         recv = recv_server;
         send = send_server;
@@ -48,12 +41,6 @@ Broker::~Broker()
         delete m_workers.begin()->second;
         m_workers.erase(m_workers.begin());
     }
-}
-
-
-void Broker::bind(std::string address)
-{
-    m_sock.bind(address);
 }
 
 
@@ -91,7 +78,7 @@ void Broker::proc_heartbeat(time_unit_t heartbeat_at)
 void Broker::start()
 {
     time_unit_t now = now_ms();
-    time_unit_t heartbeat_at = now + HEARTBEAT_INTERVAL;
+    time_unit_t heartbeat_at = now + m_hb_interval;
 
     zmq::poller_t<> poller;
     poller.add(m_sock, zmq::event_flags::pollin);
@@ -108,7 +95,7 @@ void Broker::start()
         }
         proc_heartbeat(heartbeat_at);
 
-        heartbeat_at += HEARTBEAT_INTERVAL;
+        heartbeat_at += m_hb_interval;
         now = now_ms();
     }
 }
@@ -265,7 +252,7 @@ void Broker::worker_process(remote_identity_t sender, zmq::multipart_t& mmsg)
             worker_delete(wrk, 1);
             return;
         }
-        wrk->expiry = now_ms() + HEARTBEAT_EXPIRY;
+        wrk->expiry = now_ms() + m_hb_expiry;
         return;
     }
     if (mdp::worker::disconnect == command) {
@@ -280,7 +267,7 @@ void Broker::worker_waiting(Broker::Worker* wrk)
 {
     m_waiting.insert(wrk);
     wrk->service->waiting.push_back(wrk);
-    wrk->expiry = now_ms() + HEARTBEAT_EXPIRY;
+    wrk->expiry = now_ms() + m_hb_expiry;
     
     service_dispatch(wrk->service);
 }
@@ -302,7 +289,8 @@ void Broker::client_process(remote_identity_t client_id, zmq::multipart_t& mmsg)
 
 // An actor function running a Broker.
 
-void generaldomo::broker_actor(zmq::socket_t& pipe, std::string address, int socktype)
+void generaldomo::broker_actor(zmq::socket_t& pipe, int socktype)
 {
+    assert(false);
 }
 

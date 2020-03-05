@@ -11,19 +11,19 @@ namespace generaldomo {
     namespace mdp {
         namespace client {
             // Identify the type and version of the client sub-protocol
-            const char* ident = "MDPC01";
+            inline const char* ident = "MDPC01";
 
         }
         namespace worker {
             // Identify the type and version of the worker sub-protocol
-            const char* ident = "MDPW01";
+            inline const char* ident = "MDPW01";
             
             /// Worker commands as strings
-            const char* ready = "\001";
-            const char* request ="\002";
-            const char* reply = "\003";
-            const char* heartbeat = "\004";
-            const char* disconnect = "\005";
+            inline const char* ready = "\001";
+            inline const char* request ="\002";
+            inline const char* reply = "\003";
+            inline const char* heartbeat = "\004";
+            inline const char* disconnect = "\005";
         }
     }
 }
