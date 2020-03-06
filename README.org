@@ -70,7 +70,7 @@ GDP-extended protocol.
 
 ** C++
 
-*** Installation requirements
+*** Requirements
 
 The Generaldomo C++17 API requires ~libzmq~ to have been built with
 "draft" sockets.  The easiest way to do this is by installing from
@@ -102,7 +102,10 @@ above, Generaldomo C++ API may be installed as:
   $ waf configure --prefix=$HOME/opt/zmq
 #+end_example
 
+*** API
 
+The Generaldomo C++ library API is still under development.  For now,
+use the [[file:tests/][tests]] as examples.
 
 ** Python
 
@@ -122,7 +125,7 @@ Generaldomo Python API.
   $ pip install [-e] .
 #+end_example
 
-* Use
+** Command line
 
 All example programs are exposed through a common ~generaldomo~ CLI.
 

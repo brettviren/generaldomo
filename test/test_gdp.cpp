@@ -1,4 +1,26 @@
 /*! Test generaldomo
+
+  Default test
+
+  $ ./build/test_gdp
+
+  Span socket types and client/worker numbers
+
+  $ ./build/test_gdp router 1 1
+  $ ./build/test_gdp server 1 1
+  $ ./build/test_gdp router 10 1
+  $ ./build/test_gdp server 1 10
+  $ ./build/test_gdp router 10 10
+  $ ./build/test_gdp server 10 10
+
+  Cross language test using Python workers (run each in own terminal)
+
+  $ ./build/test_gdp router 1 0
+  $ generaldomo echo --verbose -s dealer -a tcp://127.0.0.1:5555
+
+  $ ./build/test_gdp server 1 0
+  $ generaldomo echo --verbose -s client -a tcp://127.0.0.1:5555
+
  */
 
 #include "generaldomo/broker.hpp"

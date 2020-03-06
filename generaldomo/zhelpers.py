@@ -1,6 +1,8 @@
 # encoding: utf-8
 """
-Helper module for example applications. Mimics ZeroMQ Guide's zhelpers.h.
+Helper module for example applications. 
+Mimics ZeroMQ Guide's zhelpers.h.
+Extended to generalize SOCKET/ROUTER and CLIENT/DEALER 
 """
 
 import sys
@@ -72,30 +74,55 @@ def zpipe(ctx):
 
 def encode_message(parts):
     '''
-    Return encoded bytes from list of parts.  A part is either a frame or bytes.
+    Encode parts in a CZMQ-compatible (zmsg_decode()/zmsg_encode())
+    way.
 
+    A part may be either a PyZMQ zmq.Frame or bytes.
+
+    Parts are serialized to bytes and prefixing with a size.  Parts
+    smaller than 255 bytes are prefixed with a 1-byte size value.
+    Larger parts are prefixed by a fixed 1-byte value of 0xFF and a
+    4-byte size value.
     '''
     ret = b''
     for p in parts:
         if isinstance(p, zmq.Frame):
             p = p.bytes
-        s = struct.pack('I', len(p))
-        ret += s + p
+        siz = len(p)
+        if siz < 255:
+            s = struct.pack('=B', siz)
+        else:
+            s = struct.pack('=BI', 0xFF, siz)
+        one = s + p
+        ret += one
+        
     return ret
 
 def decode_message(encoded):
     '''
-    Return list of parts, each part type bytes.
+    Decode parts in a CZMQ-compatible way.
+
+    This provides the inverse function of encode_message() with the
+    exception that each part in the returned list is of type bytes,
+    an not zmq.Frame.
     '''
     tot = len(encoded)
     ret = list()
     beg = 0
     while beg < tot:
-        end = beg + 4
+        end = beg + 1           # small size of 0xFF
         if end >= tot:
             raise ValueError("corrupt message part in size")
-        size = struct.unpack('i',encoded[beg:end])[0]
+        size = struct.unpack('=B',encoded[beg:end])[0]
         beg = end
+
+        if size == 0xFF:        # large message
+            end = beg + 4
+            if end >= tot:
+                raise ValueError("corrupt message part in size")
+            size = struct.unpack('=I',encoded[beg:end])[0]
+            beg = end
+
         end = beg + size
         if end > tot:
             raise ValueError("corrupt message part in data")

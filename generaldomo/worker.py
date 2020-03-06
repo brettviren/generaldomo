@@ -6,7 +6,7 @@ Author: Min RK <benjaminrk@gmail.com>
 Based on Java example by Arkadiusz Orzechowski
 
 Originally from Zguide examples, generalized to use CLIENT 
-or DEALER by brett.viren@gmail.com
+or DEALER following Generaldomo Protocol. brett.viren@gmail.com
 """
 
 import logging
@@ -18,9 +18,10 @@ from .zhelpers import dump, clientish_recv, clientish_send
 from . import MDP
 
 class Worker(object):
-    """Majordomo Protocol Worker API, Python version
+    """Generaldomo Protocol Worker API, Python version
 
     Implements the MDP/Worker spec at http:#rfc.zeromq.org/spec:7.
+    Extended as described in https://brettviren.github.io/generaldomo/
     """
 
     HEARTBEAT_LIVENESS = 3 # 3-5 is reasonable
