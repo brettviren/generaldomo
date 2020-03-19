@@ -90,9 +90,9 @@ def encode_message(parts):
             p = p.bytes
         siz = len(p)
         if siz < 255:
-            s = struct.pack('=B', siz)
+            s = struct.pack('>B', siz)
         else:
-            s = struct.pack('=BI', 0xFF, siz)
+            s = struct.pack('>BI', 0xFF, siz)
         one = s + p
         ret += one
         
@@ -113,14 +113,14 @@ def decode_message(encoded):
         end = beg + 1           # small size of 0xFF
         if end >= tot:
             raise ValueError("corrupt message part in size")
-        size = struct.unpack('=B',encoded[beg:end])[0]
+        size = struct.unpack('>B',encoded[beg:end])[0]
         beg = end
 
         if size == 0xFF:        # large message
             end = beg + 4
             if end >= tot:
                 raise ValueError("corrupt message part in size")
-            size = struct.unpack('=I',encoded[beg:end])[0]
+            size = struct.unpack('>I',encoded[beg:end])[0]
             beg = end
 
         end = beg + size
